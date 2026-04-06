@@ -1,4 +1,4 @@
-name: Deploy refer code
+name: Deploy blogautomationcode 
 
 on:
   push:
