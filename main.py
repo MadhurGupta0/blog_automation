@@ -8,9 +8,9 @@ load_dotenv()
 
 # Azure OpenAI config
 azure_client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY", "5JrKsbth7THL1EJ5p4HLhnWo0bjuw3FaRoLv1zLWGF9e6Ip71reLJQQJ99ALACHYHv6XJ3w3AAAAACOGquzS"),
+    api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", "https://ai-degensid9734ai299032318840.cognitiveservices.azure.com/"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT",""),
 )
 
 DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-5-chat")
@@ -35,6 +35,10 @@ def generate_blog(topic: str) -> tuple[str, str]:
                 "content": (
                     "You are a professional health and wellness blog writer. "
                     "Write engaging, informative blog posts in HTML format suitable for WordPress.\n\n"
+                    "IMPORTANT — ORIGINALITY: Generate all content entirely from your own knowledge. "
+                    "Do NOT copy, paraphrase, or reproduce content from any website, article, or external source. "
+                    "Every sentence must be original and written fresh by you. "
+                    "Do not reference, quote, or cite any specific website, publication, or article.\n\n"
                     "Follow these rules strictly:\n"
                     "1. STRUCTURE: Begin with an introductory first paragraph that does NOT contain the main keyword. "
                     "The first paragraph should hook the reader with a relatable scenario, question, or surprising fact — no keyword stuffing.\n"
@@ -149,18 +153,36 @@ def publish_blog(title: str, content: str, featured_media_id: int = None) -> dic
 
 
 if __name__ == "__main__":
-    topic = "can't sleep anxiety 2am"
+    from sheets_loader import get_pending_topics, mark_completed
 
-    print(f"Generating blog post about: {topic}")
-    title, content = generate_blog(topic)
-    print(f"Title: {title}")
+    pending = get_pending_topics()
 
-    print("Searching for a relevant image...")
-    image_bytes, filename, alt_text = search_image(topic)
+    if not pending:
+        print("No pending topics found in the spreadsheet.")
+    else:
+        print(f"Found {len(pending)} pending topic(s).\n")
 
-    print("Uploading image to WordPress...")
-    media_id = upload_image_to_wordpress(image_bytes, filename, alt_text)
+    for item in pending:
+        topic = item["topic"]
+        row = item["row"]
 
-    print("Publishing to WordPress...")
-    result = publish_blog(title, content, featured_media_id=media_id)
-    print(f"Published! Post ID: {result.get('id')}, URL: {result.get('link')}")
+        print(f"--- Row {row}: {topic} ---")
+        try:
+            print(f"Generating blog post about: {topic}")
+            title, content = generate_blog(topic)
+            print(f"Title: {title}")
+
+            print("Searching for a relevant image...")
+            image_bytes, filename, alt_text = search_image(topic)
+
+            print("Uploading image to WordPress...")
+            media_id = upload_image_to_wordpress(image_bytes, filename, alt_text)
+
+            print("Publishing to WordPress...")
+            result = publish_blog(title, content, featured_media_id=media_id)
+            print(f"Published! Post ID: {result.get('id')}, URL: {result.get('link')}")
+
+            mark_completed(row_number=row, topic=topic)
+        except Exception as e:
+            print(f"  ERROR processing '{topic}': {e} — skipping, row left as pending.")
+        print()
