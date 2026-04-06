@@ -149,7 +149,7 @@ def publish_blog(title: str, content: str, featured_media_id: int = None) -> dic
 
 
 if __name__ == "__main__":
-    topic = "The benefits of mindfulness meditation for mental health"
+    topic = "can't sleep anxiety 2am"
 
     print(f"Generating blog post about: {topic}")
     title, content = generate_blog(topic)
