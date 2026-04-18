@@ -119,7 +119,7 @@ def get_quiz_links() -> list[dict]:
         return []
 
 
-def push_to_supabase(topic: str, brief: dict, slug: str) -> None:
+def push_to_supabase(topic: str, brief: dict, slug: str, image_id: str = "") -> None:
     """Insert a completed blog record into Supabase."""
     public_url = f"{SITE_BASE}/blogs/{slug}" if slug else ""
     supabase.table(BLOG_TABLE).insert({
@@ -127,6 +127,7 @@ def push_to_supabase(topic: str, brief: dict, slug: str) -> None:
         "details":   brief,
         "completed": True,
         "url":       public_url,
+        "images":    image_id,
     }).execute()
     print(f"  Saved to Supabase: '{topic}' → {public_url}")
 
@@ -357,17 +358,33 @@ _ILLUSTRATION_KEYWORDS = {
     "3d render", "render", "graphic", "icon",
 }
 
-def _looks_like_illustration(photo: dict) -> bool:
+def _is_illustration(photo: dict) -> bool:
     text = (photo.get("alt") or "").lower()
     return any(kw in text for kw in _ILLUSTRATION_KEYWORDS)
 
-def search_image(query: str) -> tuple[bytes, str, str]:
+def get_used_image_ids() -> set[str]:
+    """Fetch all previously used Pexels image IDs from Supabase."""
+    try:
+        resp = (
+            supabase.table(BLOG_TABLE)
+            .select("images")
+            .not_.is_("images", "null")
+            .execute()
+        )
+        return {row["images"] for row in resp.data if row.get("images")}
+    except Exception:
+        return set()
+
+def search_image(query: str, used_ids: set[str] = None) -> tuple[bytes, str, str, str]:
+    """Returns (image_bytes, filename, alt_text, pexels_photo_id)."""
     if not PEXELS_API_KEY:
         raise ValueError("PEXELS_API_KEY is not set in .env")
+    if used_ids is None:
+        used_ids = set()
 
     resp = requests.get(
         "https://api.pexels.com/v1/search",
-        params={"query": query, "per_page": 15, "orientation": "landscape"},
+        params={"query": f"{query} illustration concept art", "per_page": 30, "orientation": "landscape"},
         headers={"Authorization": PEXELS_API_KEY},
     )
     resp.raise_for_status()
@@ -376,16 +393,19 @@ def search_image(query: str) -> tuple[bytes, str, str]:
     if not photos:
         raise ValueError(f"No images found on Pexels for: {query}")
 
-    # Prefer real photos over illustrations/concept art
-    real_photos = [p for p in photos if not _looks_like_illustration(p)]
-    photo = real_photos[0] if real_photos else photos[0]
+    # Prefer illustrations/concept art, skip already-used IDs
+    illustrations = [p for p in photos if _is_illustration(p)]
+    candidates = illustrations if illustrations else photos
+    fresh = [p for p in candidates if (p.get("url") or f"https://www.pexels.com/photo/{p['id']}/") not in used_ids]
+    photo = fresh[0] if fresh else candidates[0]
 
-    image_url = photo["src"]["large2x"]
-    alt_text  = photo.get("alt") or query
-    filename  = f"{query.replace(' ', '_')[:50]}.jpg"
+    image_url    = photo["src"]["large2x"]
+    alt_text     = photo.get("alt") or query
+    filename     = f"{query.replace(' ', '_')[:50]}.jpg"
+    pexels_url   = photo.get("url") or f"https://www.pexels.com/photo/{photo['id']}/"
 
-    print(f"  Image by {photo['photographer']} on Pexels")
-    return requests.get(image_url).content, filename, alt_text
+    print(f"  Pexels image: {pexels_url} by {photo['photographer']}")
+    return requests.get(image_url).content, filename, alt_text, pexels_url
 
 
 def upload_image_to_wordpress(image_bytes: bytes, filename: str, alt_text: str) -> int:
@@ -449,6 +469,10 @@ if __name__ == "__main__":
     blog_links = get_existing_blog_links()
     print(f"  Found {len(blog_links)} published blogs.")
 
+    print("Fetching used image IDs from Supabase...")
+    used_image_ids = get_used_image_ids()
+    print(f"  Found {len(used_image_ids)} used images.")
+
     print("Fetching quiz links from Supabase...")
     quiz_links = get_quiz_links()
     # Always include fallback quiz links; deduplicate by URL
@@ -482,7 +506,8 @@ if __name__ == "__main__":
             )
 
             print("  Searching for image...")
-            image_bytes, filename, alt_text = search_image(brief["focus_keyword"])
+            image_bytes, filename, alt_text, photo_id = search_image(brief["focus_keyword"], used_ids=used_image_ids)
+            used_image_ids.add(photo_id)
 
             print("  Uploading image to WordPress...")
             media_id = upload_image_to_wordpress(image_bytes, filename, alt_text)
@@ -494,7 +519,7 @@ if __name__ == "__main__":
 
             print("  Saving to Supabase...")
             slug = brief.get("url_slug", "")
-            push_to_supabase(title, brief, slug)
+            push_to_supabase(title, brief, slug, image_id=photo_id)
 
             published = True
             break  # one blog per run
