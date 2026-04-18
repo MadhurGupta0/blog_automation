@@ -1,3 +1,6 @@
 requests
 python-dotenv
-openai
+boto3
+pytrends
+supabase
+urllib3<2
