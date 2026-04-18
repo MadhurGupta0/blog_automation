@@ -1,17 +1,20 @@
-# Use Python 3.10 as the base image
-FROM python:3.12-slim
+FROM python:3.11-slim
 
-# Set working directory in the container
 WORKDIR /app
 
-# Copy requirements file
-COPY requirements.txt .
-
 # Install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application files
-COPY main.py ./
+# Copy source
+COPY blogautomation.py .
+COPY seotrends.py .
 
-# Run the application
-CMD ["python", "main.py"] 
+# Copy entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# All secrets come from ECS task definition env vars — no .env file baked in
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["/entrypoint.sh"]
