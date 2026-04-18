@@ -2,6 +2,7 @@ import sys
 import json
 import os
 import re
+import random
 import boto3
 from pytrends.request import TrendReq
 from dotenv import load_dotenv
@@ -41,9 +42,11 @@ def get_seo_topics(keywords=None) -> dict:
     Returns the parsed JSON dict: {"topics": [...]}
     """
     if keywords is None:
-        keywords = ["anxiety", "mental health", "overthinking", "depression", "mindfulness"]
+        keywords = ["anxiety", "mental health", "overthinking", "depression", "mindfulness",
+                    "self care", "therapy", "stress management", "emotional intelligence", "childhood trauma"]
 
-    # Google Trends supports max 5 keywords per request
+    # Shuffle so each run targets different keywords, then cap at 5 (Google Trends limit)
+    random.shuffle(keywords)
     keywords = keywords[:5]
 
     # ── Google Trends ─────────────────────────────────────────────────────────
